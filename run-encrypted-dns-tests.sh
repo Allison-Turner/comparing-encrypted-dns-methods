@@ -2,6 +2,13 @@
 
 FILE_OWNER=$1
 
+if [ -z "$FILE_OWNER" ];
+then
+    echo "Please include the name of the user who should own the generated network monitoring artifacts"
+    echo "You can check your username with the whoami command"
+    exit(1)
+fi
+
 HELPER_LOG="./helper.log"
 
 DOT_PCAP_DIR="./dot-pcaps"
@@ -56,7 +63,8 @@ init(){
 }
 
 start_packet_capture(){
-    FILE=$(dumpcap -i docker0 --autostop duration:15 -n -q 2>&1 >/dev/null | grep "File:" | awk '{print $2}')
+    DURATION=$1
+    FILE=$(dumpcap -i docker0 --autostop duration:$DURATION -n -q 2>&1 >/dev/null | grep "File:" | awk '{print $2}')
     echo $FILE > $HELPER_LOG
 }
 
@@ -103,7 +111,7 @@ run_dot_test(){
     wait
 
     sleep 5
-    start_packet_capture &
+    start_packet_capture 15 &
     sleep 2
     docker exec $CONTAINER_ID /bin/bash -c "export RRTYPE=$TYPE && ./dnslookup $DOMAIN tls://dns.adguard.com" >> $OUTFILE 2>&1
     wait
@@ -130,7 +138,7 @@ run_doh_test(){
     wait
 
     sleep 5
-    start_packet_capture &
+    start_packet_capture 15 &
     sleep 2
     docker exec $CONTAINER_ID curl -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?name='$DOMAIN'&type='$TYPE >> $OUTFILE 2>&1
     wait
@@ -157,7 +165,7 @@ run_doq_test(){
     wait
 
     sleep 5
-    start_packet_capture &
+    start_packet_capture 15 &
     sleep 2
     docker exec $CONTAINER_ID /bin/bash -c "export RRTYPE=$TYPE && ./dnslookup $DOMAIN quic://dns.adguard.com" >> $OUTFILE 2>&1
     wait
@@ -166,6 +174,114 @@ run_doq_test(){
     remove_test_container $CONTAINER_ID
 
     move_pcap_to_result_dir $DOQ_PCAP_DIR 'doq' $i $TYPE $TIMESTAMP
+
+    echo "Test finished"
+}
+
+run_persistent_env_dot_tests(){
+    TIMESTAMP=$1
+    OUTFILE="$DOT_OUTFILE_DIR/persistent-env-dot-$TIMESTAMP.out"
+
+    echo "DOT: A + AAAA queries in persistent environment on following domains:"
+    for i in "${domains[@]}"
+    do
+        echo $i
+    done
+
+    touch $OUTFILE
+
+    CONTAINER_ID=$(docker run -dit adguard-dnslookup-env)
+    wait
+
+    DURATION=$(( ${#domains[@]}*5 ))
+    start_packet_capture $DURATION &
+
+    for i in "${domains[@]}"
+    do
+        docker exec $CONTAINER_ID /bin/bash -c "export RRTYPE=A && ./dnslookup $i tls://dns.adguard.com" >> $OUTFILE 2>&1
+
+        docker exec $CONTAINER_ID /bin/bash -c "export RRTYPE=AAAA && ./dnslookup $i tls://dns.adguard.com" >> $OUTFILE 2>&1
+    done
+
+    wait
+
+    chown $FILE_OWNER $OUTFILE
+
+    remove_test_container $CONTAINER_ID
+
+    move_pcap_to_result_dir $DOT_PCAP_DIR 'dot' 'persistent-env' 'A-AAAA' $TIMESTAMP
+
+    echo "Test finished"
+}
+
+run_persistent_env_doh_tests(){
+    TIMESTAMP=$1
+    OUTFILE="$DOH_OUTFILE_DIR/persistent-env-doh-$TIMESTAMP.out"
+
+    echo "DOH: A + AAAA queries in persistent environment on following domains:"
+    for i in "${domains[@]}"
+    do
+        echo $i
+    done
+
+    touch $OUTFILE
+
+    CONTAINER_ID=$(docker run -dit curl-cloudflare-resolver-env)
+    wait
+
+    DURATION=$(( ${#domains[@]}*5 ))
+    start_packet_capture $DURATION &
+
+    for i in "${domains[@]}"
+    do
+        docker exec $CONTAINER_ID curl -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?name='$i'&type=A' >> $OUTFILE 2>&1
+
+        docker exec $CONTAINER_ID curl -H 'accept: application/dns-json' 'https://cloudflare-dns.com/dns-query?name='$i'&type=AAAA' >> $OUTFILE 2>&1
+    done
+       
+    wait
+
+    chown $FILE_OWNER $OUTFILE
+
+    remove_test_container $CONTAINER_ID
+
+    move_pcap_to_result_dir $DOH_PCAP_DIR 'doh' 'persistent-env' 'A-AAAA' $TIMESTAMP
+
+    echo "Test finished"
+}
+
+run_persistent_env_doq_tests(){
+    TIMESTAMP=$1
+    OUTFILE="$DOQ_OUTFILE_DIR/persistent-env-doq-$TIMESTAMP.out"
+
+    echo "DOQ: A + AAAA queries in persistent environment on following domains:"
+    for i in "${domains[@]}"
+    do
+        echo $i
+    done
+
+    touch $OUTFILE
+
+    CONTAINER_ID=$(docker run -dit adguard-dnslookup-env)
+    wait
+
+    DURATION=$(( ${#domains[@]}*5 ))
+    start_packet_capture $DURATION &
+
+    for i in "${domains[@]}"
+    do
+        docker exec $CONTAINER_ID /bin/bash -c "export RRTYPE=A && ./dnslookup $i quic://dns.adguard.com" >> $OUTFILE 2>&1
+
+        docker exec $CONTAINER_ID /bin/bash -c "export RRTYPE=AAAA && ./dnslookup $i quic://dns.adguard.com" >> $OUTFILE 2>&1
+    done
+
+    wait
+
+    chown $FILE_OWNER $OUTFILE
+
+    remove_test_container $CONTAINER_ID
+
+    move_pcap_to_result_dir $DOQ_PCAP_DIR 'doq' 'persistent-env' 'A-AAAA' $TIMESTAMP
 
     echo "Test finished"
 }
@@ -180,23 +296,27 @@ docker build -t curl-cloudflare-resolver-env -f cloudflare-rest-api-via-curl-env
 docker build -t adguard-dnslookup-env -f adguard-dnslookup-env.Dockerfile .
 wait
 
-for i in "${domains[@]}"
-do
-    run_dot_test $i 'A' $TS
-    wait
+#for i in "${domains[@]}"
+#do
+#    run_dot_test $i 'A' $TS
+#    wait
+#
+#    run_dot_test $i 'AAAA' $TS
+#    wait
+#
+#    run_doh_test $i 'A' $TS
+#    wait
+#
+#    run_doh_test $i 'AAAA' $TS
+#    wait
+#
+#    run_doq_test $i 'A' $TS
+#    wait
+#
+#    run_doq_test $i 'AAAA' $TS
+#    wait
+#done
 
-    run_dot_test $i 'AAAA' $TS
-    wait
-
-    run_doh_test $i 'A' $TS
-    wait
-
-    run_doh_test $i 'AAAA' $TS
-    wait
-
-    run_doq_test $i 'A' $TS
-    wait
-
-    run_doq_test $i 'AAAA' $TS
-    wait
-done
+run_persistent_env_dot_tests $TS
+run_persistent_env_doh_tests $TS
+run_persistent_env_doq_tests $TS
