@@ -7,6 +7,7 @@
 * bash shell
 * internet access
 * https://github.com/ameshkov/dnslookup
+  * potential for https://github.com/ns1labs/doq-proxy , but could not get docker-compose inter-container networking config working   
 * https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/dns-json/
 
 ## Example runs
