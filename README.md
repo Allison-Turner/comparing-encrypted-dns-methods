@@ -1,5 +1,14 @@
 # comparing-encrypted-dns-methods
 
+## Requirements & Dependencies
+* Docker
+* dumpcap
+* PyShark
+* bash shell
+* internet access
+* https://github.com/ameshkov/dnslookup
+* https://developers.cloudflare.com/1.1.1.1/encryption/dns-over-https/make-api-requests/dns-json/
+
 ## Example runs
 
 If you do not need sudo to run Docker commands on your machine, and you want to your user own the artifacts generated 
