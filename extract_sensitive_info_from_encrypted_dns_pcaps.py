@@ -35,38 +35,37 @@ def print_quic_field_if_exists(field_name, packet):
 
 
 def dissect_doh_or_dot_packet(packet):
-    if(packet.__contains__("tls")):
+    if "handshake_type" in packet.tls.field_names:
+        handshake_type = packet.tls.get_field_value("handshake_type").int_value
+        
+        if handshake_type == 1:
+            print("Client Hello")
+            generate_transport_layer_str(packet)
+            print_tls_field_if_exists("handshake_session_id", packet)
+            print_tls_field_if_exists("handshake_extensions_alpn_str", packet)
+            print_tls_field_if_exists("handshake_extensions_server_name", packet)
+            print_tls_field_if_exists("handshake_random", packet)
+            print_tls_field_if_exists("handshake_extensions_key_share_key_exchange", packet)
+            print_tls_field_if_exists("handshake_extensions_padding_data", packet)
 
-        if "handshake_type" in packet.tls.field_names:
-            handshake_type = packet.tls.get_field_value("handshake_type").int_value
-            if handshake_type == 1:
-                print("Client Hello")
-                generate_transport_layer_str(packet)
-                print_tls_field_if_exists("handshake_session_id", packet)
-                print_tls_field_if_exists("handshake_extensions_alpn_str", packet)
-                print_tls_field_if_exists("handshake_extensions_server_name", packet)
-                print_tls_field_if_exists("handshake_random", packet)
-                print_tls_field_if_exists("handshake_extensions_key_share_key_exchange", packet)
-                print_tls_field_if_exists("handshake_extensions_padding_data", packet)
-
-            elif handshake_type == 2:
-                print("Server Hello")
-                generate_transport_layer_str(packet)
-                print_tls_field_if_exists("record_version", packet)
-                print_tls_field_if_exists("record_length", packet)
-                print_tls_field_if_exists("handshake_session_id", packet)
-                print_tls_field_if_exists("handshake_random", packet)
-                print_tls_field_if_exists("handshake_extensions_key_share_key_exchange", packet)
-               
-        else:
-            print("Application Data Packet")
+        elif handshake_type == 2:
+            print("Server Hello")
             generate_transport_layer_str(packet)
             print_tls_field_if_exists("record_version", packet)
             print_tls_field_if_exists("record_length", packet)
-            print_tls_field_if_exists("app_data_proto", packet)
-            print_tls_field_if_exists("app_data", packet)
+            print_tls_field_if_exists("handshake_session_id", packet)
+            print_tls_field_if_exists("handshake_random", packet)
+            print_tls_field_if_exists("handshake_extensions_key_share_key_exchange", packet)
+               
+    else:
+        print("Application Data Packet")
+        generate_transport_layer_str(packet)
+        print_tls_field_if_exists("record_version", packet)
+        print_tls_field_if_exists("record_length", packet)
+        print_tls_field_if_exists("app_data_proto", packet)
+        print_tls_field_if_exists("app_data", packet)
 
-        print("\n")
+    print("\n")
             
 
 
@@ -161,7 +160,8 @@ for filename in doh_pcap_dir_list:
     if ".pcap" in filename:
         capture = pyshark.FileCapture(DOH_PCAP_DIR + "/" + filename)
         for packet in capture:
-            dissect_doh_or_dot_packet(packet)
+            if(packet.__contains__("tls")):
+                dissect_doh_or_dot_packet(packet)
 
 
 
